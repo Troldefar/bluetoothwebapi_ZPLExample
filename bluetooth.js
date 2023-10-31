@@ -10,8 +10,8 @@ class CustomBluetooth {
         this.EMPTY_STRING = '';
 
         this.customValue = value === this.EMPTY_STRING ? 'Default' : value;
-        this.serviceUUID = 'your-service-id';
-        this.characteristicUUID = 'your-characteristic-id';
+        this.serviceUUID = 'your-service-uuid';
+        this.characteristicUUID = 'your-characteristic-uuid';
         this.calculatedLabelLength = this.calculateLabelLength();
         this.options = { 
             acceptAllDevices: true,
@@ -48,7 +48,7 @@ class CustomBluetooth {
         ^FO93,93^GB40,40,40^FS
         ^FO220,50^FD${this.customValue}, Inc.^FS
         ^CF0,30
-        
+
         ^FO220,115^FD1000 Shipping Lane^FS
         ^FO220,155^FDShelbyville TN 38102^FS
         ^FO220,195^FDUnited States (USA)^FS
