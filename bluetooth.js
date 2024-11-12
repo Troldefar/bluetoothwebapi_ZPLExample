@@ -14,7 +14,10 @@ class CustomBluetooth {
         this.characteristicUUID = 'your-characteristic-uuid';
         this.calculatedLabelLength = this.calculateLabelLength();
         this.options = { 
-            acceptAllDevices: true,
+            acceptAllDevices: false,
+            filters: [{
+                namePrefix: 'XXXXXX' // Name can be found by alert/log device.name ( const device  = await navigator.bluetooth.requestDevice(this.options); )
+            }],
             services: [this.serviceUUID],
             optionalServices: [this.serviceUUID]
         };
