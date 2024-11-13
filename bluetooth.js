@@ -3,16 +3,19 @@
  */
 
 class CustomBluetooth {
-    constructor(value) {
-        this.ZEBRA_MAX_STRING_BUFFER_LENGTH = 500;
-        this.ZEBRA_DEFAULT_LABEL_LENGTH = 200;
-        this.NEW_LINE = '\n';
-        this.EMPTY_STRING = '';
 
+    ZEBRA_MAX_STRING_BUFFER_LENGTH = 500;
+    ZEBRA_DEFAULT_LABEL_LENGTH = 200;
+    NEW_LINE = '\n';
+    EMPTY_STRING = '';
+
+    serviceUUID = 'your-service-uuid';
+    characteristicUUID = 'your-characteristic-uuid';
+    
+    constructor(value) {
         this.customValue = value === this.EMPTY_STRING ? 'Default' : value;
-        this.serviceUUID = 'your-service-uuid';
-        this.characteristicUUID = 'your-characteristic-uuid';
         this.calculatedLabelLength = this.calculateLabelLength();
+        
         this.options = { 
             acceptAllDevices: false,
             filters: [{
@@ -88,37 +91,29 @@ class CustomBluetooth {
     }
 
     async connectAndDeligate() {
-        try {
-            const device  = await navigator.bluetooth.requestDevice(this.options);
-            const server  = await device.gatt.connect();
-            const service = await server.getPrimaryService(this.serviceUUID);
-            this.characteristic = await service.getCharacteristic(this.characteristicUUID);
-            this.getZPLCommand().length > this.ZEBRA_MAX_STRING_BUFFER_LENGTH ? this.splitAndWrite() : this.write(this.getZPLCommand());
-        } catch (error) {
-            alert(error);
-        }
+        const device  = await navigator.bluetooth.requestDevice(this.options);
+        const server  = await device.gatt.connect();
+        const service = await server.getPrimaryService(this.serviceUUID);
+        this.characteristic = await service.getCharacteristic(this.characteristicUUID);
+        this.getZPLCommand().length > this.ZEBRA_MAX_STRING_BUFFER_LENGTH ? await this.splitAndWrite() : await this.write(this.getZPLCommand());
     }
 
     async splitAndWrite() {
-        try {
-            const currentCmdArray = [];
-            const splittedTokens = this.getZPLCommand().split(this.NEW_LINE);
-            let validCmd = 0;
-            for(let i = 0; i < splittedTokens.length; i++) {
-                let currentStmt = splittedTokens[i].replaceAll(' ', this.EMPTY_STRING);
-                let currentCmd = `cmd${validCmd}`;
-                if (!currentCmdArray[currentCmd]) currentCmdArray[currentCmd] = this.EMPTY_STRING;
-                currentCmdArray[currentCmd] += currentStmt;
-                if (currentCmdArray[currentCmd].length >= this.ZEBRA_MAX_STRING_BUFFER_LENGTH) {
-                    currentCmdArray[currentCmd] = currentCmdArray[currentCmd].replace(currentStmt, this.EMPTY_STRING);
-                    currentCmdArray[`cmd${(validCmd+1)}`] = currentStmt;
-                    validCmd++;
-                }
+        const currentCmdArray = [];
+        const splittedTokens = this.getZPLCommand().split(this.NEW_LINE);
+        let validCmd = 0;
+        for(let i = 0; i < splittedTokens.length; i++) {
+            let currentStmt = splittedTokens[i].replaceAll(' ', this.EMPTY_STRING);
+            let currentCmd = `cmd${validCmd}`;
+            if (!currentCmdArray[currentCmd]) currentCmdArray[currentCmd] = this.EMPTY_STRING;
+            currentCmdArray[currentCmd] += currentStmt;
+            if (currentCmdArray[currentCmd].length >= this.ZEBRA_MAX_STRING_BUFFER_LENGTH) {
+                currentCmdArray[currentCmd] = currentCmdArray[currentCmd].replace(currentStmt, this.EMPTY_STRING);
+                currentCmdArray[`cmd${(validCmd+1)}`] = currentStmt;
+                validCmd++;
             }
-            for(let obj in currentCmdArray) await this.write(currentCmdArray[obj]);
-        } catch (e) {
-            alert(e);
         }
+        for(let obj in currentCmdArray) await this.write(currentCmdArray[obj]);
     }
 
     async write(cmd) {
