@@ -13,7 +13,7 @@
         document.querySelector('button').addEventListener('click', async function(e) {
             e.preventDefault();
             const bluetoothConnection = new CustomBluetooth(document.getElementById('generic').value);
-            await bluetoothConnection.connectAndDeligate();
+            await bluetoothConnection.deligate();
         });
     });
 </script>
