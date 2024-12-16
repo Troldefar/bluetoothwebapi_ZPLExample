@@ -11,15 +11,25 @@ class CustomBluetooth {
 
     serviceUUID = 'your-service-uuid';
     characteristicUUID = 'your-characteristic-uuid';
+
+    namePrefix = 'xxxxxx';
+
+    // ZPL Commands we might need
+    deviceLanguageZPL = '! U1 setvar "device.languages" "zpl"';
+    deviceLanguageLinePrint = '! U1 setvar "device.languages" "line_print"';
+    resetDevice = '! U1 do "device.reset" "" <CR>';
     
     constructor(value) {
         this.customValue = value === this.EMPTY_STRING ? 'Default' : value;
         this.calculatedLabelLength = this.calculateLabelLength();
         
         this.options = { 
-            acceptAllDevices: false,
             filters: [{
-                namePrefix: 'XXXXXX' // Name can be found by alert/log device.name ( const device  = await navigator.bluetooth.requestDevice(this.options); )
+                /**
+                * Name can be found by alert/log device.name 
+                * const device = await navigator.bluetooth.requestDevice(this.options);
+                */
+                namePrefix: this.namePrefix
             }],
             services: [this.serviceUUID],
             optionalServices: [this.serviceUUID]
@@ -44,81 +54,126 @@ class CustomBluetooth {
 
     getZPLCommand() {
         return `
-        ^XA
-
-        ^LT40
-        ^FX Top section with logo, name and address.
-        ^CF0,60
-        ^FO50,50^GB100,100,100^FS
-        ^FO75,75^FR^GB100,100,100^FS
-        ^FO93,93^GB40,40,40^FS
-        ^FO220,50^FD${this.customValue}, Inc.^FS
-        ^CF0,30
-
-        ^FO220,115^FD1000 Shipping Lane^FS
-        ^FO220,155^FDShelbyville TN 38102^FS
-        ^FO220,195^FDUnited States (USA)^FS
-        ^FO50,250^GB700,3,3^FS
-
-        ^FX Second section with recipient address and permit information.
-        ^CFA,30
-        ^FO50,300^FDJohn Doe^FS
-        ^FO50,340^FD100 Main Street^FS
-        ^FO50,380^FDSpringfield TN 39021^FS
-        ^FO50,420^FDUnited States (USA)^FS
-        ^CFA,15
-        ^FO600,300^GB150,150,3^FS
-        ^FO638,340^FDPermit^FS
-        ^FO638,390^FD123456^FS
-        ^FO50,500^GB700,3,3^FS
-
-        ^FX Third section with bar code.
-        ^BY5,2,270
-        ^FO100,550^BC^FD12345678^FS
-
-        ^FX Fourth section (the two boxes on the bottom).
-        ^FO50,900^GB700,250,3^FS
-        ^FO400,900^GB3,250,3^FS
-        ^CF0,40
-        ^FO100,960^FDCtr. X34B-1^FS
-        ^FO100,1010^FDREF1 F00B47^FS
-        ^FO100,1060^FDREF2 BL4H8^FS
-        ^CF0,190
-        ^FO470,955^FDCA^FS
-
-        ^XZ
+            ^XA
+    
+            ^LT40
+            ^FX Top section with logo, name and address.
+            ^CF0,60
+            ^FO50,50^GB100,100,100^FS
+            ^FO75,75^FR^GB100,100,100^FS
+            ^FO93,93^GB40,40,40^FS
+            ^FO220,50^FD${this.customValue}, Inc.^FS
+            ^CF0,30
+    
+            ^FO220,115^FD1000 Shipping Lane^FS
+            ^FO220,155^FDShelbyville TN 38102^FS
+            ^FO220,195^FDUnited States (USA)^FS
+            ^FO50,250^GB700,3,3^FS
+    
+            ^FX Second section with recipient address and permit information.
+            ^CFA,30
+            ^FO50,300^FDJohn Doe^FS
+            ^FO50,340^FD100 Main Street^FS
+            ^FO50,380^FDSpringfield TN 39021^FS
+            ^FO50,420^FDUnited States (USA)^FS
+            ^CFA,15
+            ^FO600,300^GB150,150,3^FS
+            ^FO638,340^FDPermit^FS
+            ^FO638,390^FD123456^FS
+            ^FO50,500^GB700,3,3^FS
+    
+            ^FX Third section with bar code.
+            ^BY5,2,270
+            ^FO100,550^BC^FD12345678^FS
+    
+            ^FX Fourth section (the two boxes on the bottom).
+            ^FO50,900^GB700,250,3^FS
+            ^FO400,900^GB3,250,3^FS
+            ^CF0,40
+            ^FO100,960^FDCtr. X34B-1^FS
+            ^FO100,1010^FDREF1 F00B47^FS
+            ^FO100,1060^FDREF2 BL4H8^FS
+            ^CF0,190
+            ^FO470,955^FDCA^FS
+    
+            ^XZ
         `;
     }
 
-    async connectAndDeligate() {
-        const device  = await navigator.bluetooth.requestDevice(this.options);
-        const server  = await device.gatt.connect();
+    async deligate() {
+        try {
+            let device = null;
+
+            /**
+             * Get method[getDevices] by:
+             * chrome://flags/ -> bluetooth -> Use the new permissions backend for Web Bluetooth = enabled
+             */
+
+            if (navigator.bluetooth.getDevices) {
+                const devices = await navigator.bluetooth.getDevices();
+                device = devices.find(d => d.name.startsWith(this.namePrefix));
+            }
+
+            this.getDevice(device);
+        } catch (e) {
+            this.getDevice();
+        }
+    }
+
+    async getDevice(device = null) {
+        if (!device) device = await navigator.bluetooth.requestDevice(this.options);
+
+        const server = await device.gatt.connect();
         const service = await server.getPrimaryService(this.serviceUUID);
         this.characteristic = await service.getCharacteristic(this.characteristicUUID);
-        this.getZPLCommand().length > this.ZEBRA_MAX_STRING_BUFFER_LENGTH ? await this.splitAndWrite() : await this.write(this.getZPLCommand());
+
+        this.talkToDevice();
+    }
+
+    /**
+     * Send cmds to device if needed
+     */
+
+    async setVarForZPLDevices() {
+        // await this.write(this.deviceLanguageZPL);
+        // await this.write(this.resetDevice);
+        // await this.write(this.deviceLanguageLinePrint);
+    }
+
+    async talkToDevice() {
+        for(let i = 0; i < this.value.length; i++) {
+            const cmd = this.getZPLCommand(this.value[i]);
+            cmd.length > this.ZEBRA_MAX_STRING_BUFFER_LENGTH ? await this.splitAndWrite(this.value[i]) : await this.write(cmd);
+        }
     }
 
     async splitAndWrite() {
         const currentCmdArray = [];
         const splittedTokens = this.getZPLCommand().split(this.NEW_LINE);
+        
         let validCmd = 0;
+        
         for(let i = 0; i < splittedTokens.length; i++) {
-            let currentStmt = splittedTokens[i].replaceAll(' ', this.EMPTY_STRING);
+            let currentStmt = splittedTokens[i].trim();
             let currentCmd = `cmd${validCmd}`;
             if (!currentCmdArray[currentCmd]) currentCmdArray[currentCmd] = this.EMPTY_STRING;
+            
             currentCmdArray[currentCmd] += currentStmt;
+            
             if (currentCmdArray[currentCmd].length >= this.ZEBRA_MAX_STRING_BUFFER_LENGTH) {
                 currentCmdArray[currentCmd] = currentCmdArray[currentCmd].replace(currentStmt, this.EMPTY_STRING);
                 currentCmdArray[`cmd${(validCmd+1)}`] = currentStmt;
                 validCmd++;
             }
         }
+
         for(let obj in currentCmdArray) await this.write(currentCmdArray[obj]);
     }
 
     async write(cmd) {
         await this.characteristic.writeValue(new TextEncoder().encode(cmd));
     }
+    
 }
 
 export default CustomBluetooth;
