@@ -129,17 +129,7 @@ class CustomBluetooth {
 
         this.talkToDevice();
     }
-
-    /**
-     * Send cmds to device if needed
-     */
-
-    async setVarForZPLDevices() {
-        // await this.write(this.deviceLanguageZPL);
-        // await this.write(this.resetDevice);
-        // await this.write(this.deviceLanguageLinePrint);
-    }
-
+    
     async talkToDevice() {
         for(let i = 0; i < this.value.length; i++) {
             const cmd = this.getZPLCommand(this.value[i]);
