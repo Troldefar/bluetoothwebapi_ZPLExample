@@ -1,7 +1,7 @@
 class Zebra {
 
     constructor(value) {
-        this.customValue;
+        this.customValue = value;
     }
 
     ZEBRA_MAX_STRING_BUFFER_LENGTH = 500;
