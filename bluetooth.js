@@ -2,80 +2,137 @@
  * Custom bluetooth object for device interaction
  */
 
+import ToastManager from './toastmanager.js';
 import Zebra from './zebra.js';
 
 class CustomBluetooth {
-    
+
     NEW_LINE = '\n';
     EMPTY_STRING = '';
-    
-    constructor(value) {
-        this.value = value;
-        this.zebra = new Zebra(!this.value  ? 'Default' : value);
-        
+
+    getDevicesIsNotEnabled = 'Bluetooth.getDevices is not supported/enabled in this browser';
+
+    constructor(cars) {
+        this.cars = cars;
+
+        this.zebra = new Zebra();
+        this.toast = new ToastManager();
+
         this.options = { 
-            filters: [{
-                /**
-                * Name can be found by alert/log device.name 
-                * const device = await navigator.bluetooth.requestDevice(this.options);
-                */
-                namePrefix: this.zebra.namePrefix
-            }],
+            filters: [{namePrefix: this.zebra.namePrefix}],
             services: [this.zebra.serviceUUID],
             optionalServices: [this.zebra.serviceUUID]
         };
     }
 
-    async deligate() {
-        try {
-            let device = null;
+    async deligate(write = false) {
 
-            /**
-             * Get method[getDevices] by:
-             * chrome://flags/ -> bluetooth -> Use the new permissions backend for Web Bluetooth = enabled
-             */
+        /**
+         * @function navigator.bluetooth.getDevices
+         * chrome://flags/ -> bluetooth -> Use the new permissions backend for Web Bluetooth = enabled
+         */
+        
+        if (!navigator.bluetooth.getDevices) return this.toast.send(this.getDevicesIsNotEnabled, 'ERROR_CLASS');
 
-            if (navigator.bluetooth.getDevices) {
-                const devices = await navigator.bluetooth.getDevices();
-                device = devices.find(d => d.name.startsWith(this.zebra.namePrefix));
+        const devices = await navigator.bluetooth.getDevices();
+        if (devices.length === 0) return this.getDevice();
+
+        for (const device of devices) {
+            try {
+                await device.watchAdvertisements();
+
+                if (write) {
+                    this.getDevice(device);
+                    this.toast.send('Printing');
+                }
+                
+                device.addEventListener('advertisementreceived', event => {
+                    if (write) this.getDevice(device);
+                });
+            } catch (error) {
+                if (write) this.toast.send(`Failed to watch advertisements (${error.message}) for ${device.name || 'Unnamed device'}:`, 'ERROR_CLASS');
             }
-
-            this.getDevice(device);
-        } catch (e) {
-            this.getDevice();
         }
+    }
+
+    async directCMD(message) {
+        if (!navigator.bluetooth.getDevices) return this.toast.send(this.getDevicesIsNotEnabled, 'ERROR_CLASS');
+
+        const devices = await navigator.bluetooth.getDevices();
+
+        if (devices.length === 0) return this.toast.send('You are not connected to any devices', 'ERROR_CLASS');
+
+        devices.map(async device => {
+            try {
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(this.zebra.serviceUUID);
+                this.characteristic = await service.getCharacteristic(this.zebra.characteristicUUID);
+                await this.characteristic.writeValue(new TextEncoder().encode(message));
+                this.toast.send(message);
+            } catch(e) {
+                this.toast.send(e, 'ERROR_CLASS');
+            }
+        });
+    }
+
+    async setBondingMode() {
+        await this.directCMD(this.zebra.setBondingMode); 
+    }
+
+    async reset() {
+        await this.directCMD(this.zebra.reset);
+    }
+
+    async discoverable() {
+        await this.directCMD(this.zebra.discoverableOn);
+    }
+
+    async minimumsecuritymode() {
+        await this.directCMD(this.zebra.minimumSecurityMode);
+    }
+
+    async ping() {
+        await this.directCMD(this.zebra.ping); 
+    }
+
+    async resetBuffer() {
+        await this.directCMD(this.zebra.resetBuffer);
     }
 
     async getDevice(device = null) {
-        if (!device) device = await navigator.bluetooth.requestDevice(this.options);
+        try {
+            if (device === null) device = await navigator.bluetooth.requestDevice(this.options);
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(this.zebra.serviceUUID);
+            this.characteristic = await service.getCharacteristic(this.zebra.characteristicUUID);
 
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(this.zebra.serviceUUID);
-        this.characteristic = await service.getCharacteristic(this.zebra.characteristicUUID);
-
-        this.talkToDevice();
-    }
-    
-    async talkToDevice() {
-        for(let i = 0; i < this.value.length; i++) {
-            const cmd = this.zebra.getZPLCommand(this.value[i]);
-            cmd.length > this.zebra.ZEBRA_MAX_STRING_BUFFER_LENGTH ? await this.splitAndWrite(this.value[i]) : await this.write(cmd);
+            this.talkToDevice();
+        } catch(e) {
+            
         }
     }
 
-    async splitAndWrite() {
+    async talkToDevice() {
+        await this.write(this.zebra.header());
+        
+        setTimeout(async () => {
+            for(let i = 0; i < this.cars.length; i++) {
+                const cmd = this.zebra.getZPLCommand(this.cars[i]);
+                cmd.length > this.zebra.ZEBRA_MAX_STRING_BUFFER_LENGTH ? await this.splitAndWrite(this.cars[i]) : await this.write(cmd);
+            }
+        }, 500);
+    }
+
+    async splitAndWrite(car) {
         const currentCmdArray = [];
-        const splittedTokens = this.getZPLCommand().split(this.NEW_LINE);
-        
+        const splittedTokens = this.zebra.getZPLCommand(car).split(this.NEW_LINE);
         let validCmd = 0;
-        
         for(let i = 0; i < splittedTokens.length; i++) {
             let currentStmt = splittedTokens[i].trim();
             let currentCmd = `cmd${validCmd}`;
             if (!currentCmdArray[currentCmd]) currentCmdArray[currentCmd] = this.EMPTY_STRING;
             
             currentCmdArray[currentCmd] += currentStmt;
-            
             if (currentCmdArray[currentCmd].length >= this.zebra.ZEBRA_MAX_STRING_BUFFER_LENGTH) {
                 currentCmdArray[currentCmd] = currentCmdArray[currentCmd].replace(currentStmt, this.EMPTY_STRING);
                 currentCmdArray[`cmd${(validCmd+1)}`] = currentStmt;
@@ -89,7 +146,7 @@ class CustomBluetooth {
     async write(cmd) {
         await this.characteristic.writeValue(new TextEncoder().encode(cmd));
     }
-    
+
 }
 
 export default CustomBluetooth;
