@@ -113,14 +113,8 @@ class CustomBluetooth {
     }
 
     async talkToDevice() {
-        await this.write(this.zebra.header());
-        
-        setTimeout(async () => {
-            for(let i = 0; i < this.cars.length; i++) {
-                const cmd = this.zebra.getZPLCommand(this.cars[i]);
-                cmd.length > this.zebra.ZEBRA_MAX_STRING_BUFFER_LENGTH ? await this.splitAndWrite(this.cars[i]) : await this.write(cmd);
-            }
-        }, 500);
+        await this.write(this.zebra.header().replaceAll('\n', ''));
+        for(let i = 0; i < this.cars.length; i++) await this.splitAndWrite(this.cars[i]);
     }
 
     async splitAndWrite(car) {
