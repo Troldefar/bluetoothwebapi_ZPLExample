@@ -39,7 +39,7 @@ class Zebra {
         `;
     }
 
-    getZPLCommand(car, includeHeader = true) {
+    getZPLCommand(car) {
         const booking = JSON.parse(car.Booking);
 
         return `
